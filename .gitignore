@@ -1,0 +1,11 @@
+# Build output
+bin/
+dist/
+coverage.out
+
+# IDE files
+.idea/
+.vscode/*.code-workspace
+
+# Environment files
+.env
