@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-const matchSelectColumns = `id, player1_id, player2_id, problem_id, status, duration_seconds, started_at, ended_at, winner_id, created_at, player1_rating_after, player2_rating_after, player1_elo_delta, player2_elo_delta`
+const matchSelectColumns = `id, player1_id, player2_id, problem_id, status, duration_seconds, started_at, ended_at, winner_id, created_at, COALESCE(victory_type, ''), player1_rating_after, player2_rating_after, player1_elo_delta, player2_elo_delta`
 
 func assignRatingSnapshot(m *Match, p1a, p2a, p1d, p2d sql.NullInt64) {
 	if p1a.Valid {
@@ -42,11 +42,11 @@ func (r *MatchRepository) CreateMatch(ctx context.Context, match *Match) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO matches (
 			id, player1_id, player2_id, problem_id, status, duration_seconds,
-			started_at, ended_at, winner_id, created_at
+			started_at, ended_at, winner_id, created_at, victory_type
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`, match.ID, match.Player1ID, match.Player2ID, match.ProblemID, match.Status, match.DurationSeconds,
-		match.StartedAt, match.EndedAt, match.WinnerID, match.CreatedAt)
+		match.StartedAt, match.EndedAt, match.WinnerID, match.CreatedAt, match.VictoryType)
 	return err
 }
 
@@ -70,6 +70,7 @@ func (r *MatchRepository) GetByID(ctx context.Context, id string) (*Match, error
 		&match.EndedAt,
 		&match.WinnerID,
 		&match.CreatedAt,
+		&match.VictoryType,
 		&p1a, &p2a, &p1d, &p2d,
 	); err != nil {
 		return nil, err
@@ -101,6 +102,7 @@ func (r *MatchRepository) GetActiveMatchByUserID(ctx context.Context, userID str
 		&match.EndedAt,
 		&match.WinnerID,
 		&match.CreatedAt,
+		&match.VictoryType,
 		&p1a, &p2a, &p1d, &p2d,
 	); err != nil {
 		return nil, err
@@ -151,6 +153,7 @@ func (r *MatchRepository) ListFinishedMatchesForUser(ctx context.Context, userID
 			&m.EndedAt,
 			&m.WinnerID,
 			&m.CreatedAt,
+			&m.VictoryType,
 			&p1a, &p2a, &p1d, &p2d,
 		); err != nil {
 			return nil, err
@@ -166,13 +169,14 @@ func (r *MatchRepository) GetUserMatchStats(ctx context.Context, userID string) 
 		SELECT
 			COUNT(*)::bigint AS played,
 			COUNT(*) FILTER (WHERE winner_id = $1)::bigint AS wins,
+			COUNT(*) FILTER (WHERE winner_id = $1 AND victory_type = 'ko')::bigint AS knockout_wins,
 			COUNT(*) FILTER (WHERE winner_id IS NOT NULL AND winner_id <> $1)::bigint AS losses,
 			COUNT(*) FILTER (WHERE winner_id IS NULL)::bigint AS draws
 		FROM matches
 		WHERE (player1_id = $1 OR player2_id = $1) AND status = 'finished'
 	`, userID)
 	var s UserMatchStats
-	if err := row.Scan(&s.MatchesPlayed, &s.Wins, &s.Losses, &s.Draws); err != nil {
+	if err := row.Scan(&s.MatchesPlayed, &s.Wins, &s.KnockoutWins, &s.Losses, &s.Draws); err != nil {
 		return UserMatchStats{}, err
 	}
 	return s, nil
@@ -193,12 +197,12 @@ func (r *MatchRepository) StartMatch(ctx context.Context, id string, startedAt t
 	return err
 }
 
-func (r *MatchRepository) FinishMatch(ctx context.Context, id string, winnerID *string, endedAt time.Time) error {
+func (r *MatchRepository) FinishMatch(ctx context.Context, id string, winnerID *string, endedAt time.Time, victoryType string) error {
 	cmdTag, err := r.db.Exec(ctx, `
 		UPDATE matches
-		SET status = 'finished', winner_id = $1, ended_at = $2
-		WHERE id = $3 AND status = 'running'
-	`, winnerID, endedAt, id)
+		SET status = 'finished', winner_id = $1, ended_at = $2, victory_type = $3
+		WHERE id = $4 AND status = 'running'
+	`, winnerID, endedAt, victoryType, id)
 	if err != nil {
 		return err
 	}

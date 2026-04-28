@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS matches (
     CHECK (player1_id <> player2_id)
 );
 
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS victory_type TEXT NULL;
+
 -- Elo snapshot per match (filled when ratings.ApplyFinishedMatch runs; NULL for older rows).
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS player1_rating_after INTEGER NULL;
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS player2_rating_after INTEGER NULL;

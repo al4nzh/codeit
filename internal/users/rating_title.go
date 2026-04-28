@@ -1,7 +1,6 @@
 package users
 
-// TitleForRating returns the display title for a rating (Elo).
-// Brackets are inclusive on both ends per product spec.
+
 func TitleForRating(rating int) string {
 	switch {
 	case rating < 0:

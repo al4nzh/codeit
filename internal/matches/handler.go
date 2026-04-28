@@ -110,6 +110,25 @@ func (h *MatchHandler) GetMyMatchStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+func (h *MatchHandler) GetUserMatchStats(c *gin.Context) {
+	userID := strings.TrimSpace(c.Param("id"))
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidUserID.Error()})
+		return
+	}
+
+	stats, err := h.service.GetUserMatchStats(c.Request.Context(), userID)
+	if err != nil {
+		if err == ErrInvalidUserID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load stats"})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
+}
+
 func parseHistoryInt(s string, def int) int {
 	s = strings.TrimSpace(s)
 	if s == "" {

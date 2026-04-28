@@ -21,6 +21,7 @@ var (
 	ErrInvalidInput   = errors.New("invalid input")
 	ErrMatchNotFound  = errors.New("match not found")
 	ErrInvalidWinner  = errors.New("winner must be one of the two match players")
+	ErrInvalidVictory = errors.New("invalid victory type")
 	ErrInvalidState   = errors.New("invalid match state transition")
 )
 
@@ -73,6 +74,7 @@ func (s *MatchService) GetByID(ctx context.Context, id string) (*Match, error) {
 		return nil, err
 	}
 	match.Result = ResolveMatchResult(match)
+	match.VictoryType = ResolveVictoryType(match)
 	return match, nil
 }
 
@@ -104,6 +106,7 @@ func (s *MatchService) ListFinishedMatchHistory(ctx context.Context, userID stri
 	for i := range raw {
 		m := &raw[i]
 		m.Result = ResolveMatchResult(m)
+		m.VictoryType = ResolveVictoryType(m)
 		entries = append(entries, MatchHistoryEntry{
 			Match:         *m,
 			OpponentID:    OpponentID(m, userID),
@@ -147,6 +150,7 @@ func (s *MatchService) GetActiveMatchByUserID(ctx context.Context, userID string
 		return nil, err
 	}
 	match.Result = ResolveMatchResult(match)
+	match.VictoryType = ResolveVictoryType(match)
 	return match, nil
 }
 
@@ -169,10 +173,24 @@ func (s *MatchService) StartMatch(ctx context.Context, id string) error {
 }
 
 func (s *MatchService) FinishMatch(ctx context.Context, id string, winnerID string) error {
+	victoryType := VictoryTypeDecision
+	if strings.TrimSpace(winnerID) == "" {
+		victoryType = VictoryTypeDraw
+	}
+	return s.FinishMatchWithVictoryType(ctx, id, winnerID, victoryType)
+}
+
+func (s *MatchService) FinishMatchWithVictoryType(ctx context.Context, id string, winnerID, victoryType string) error {
 	id = strings.TrimSpace(id)
 	winnerID = strings.TrimSpace(winnerID)
+	victoryType = strings.TrimSpace(strings.ToLower(victoryType))
 	if id == "" {
 		return ErrInvalidMatchID
+	}
+	switch victoryType {
+	case VictoryTypeKO, VictoryTypeDecision, VictoryTypeDraw:
+	default:
+		return ErrInvalidVictory
 	}
 	match, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -190,8 +208,13 @@ func (s *MatchService) FinishMatch(ctx context.Context, id string, winnerID stri
 		if winnerID != match.Player1ID && winnerID != match.Player2ID {
 			return ErrInvalidWinner
 		}
+		if victoryType == VictoryTypeDraw {
+			return ErrInvalidVictory
+		}
 		winnerIDPtr = &winnerID
+	} else if victoryType != VictoryTypeDraw {
+		return ErrInvalidVictory
 	}
 
-	return s.repo.FinishMatch(ctx, id, winnerIDPtr, time.Now())
+	return s.repo.FinishMatch(ctx, id, winnerIDPtr, time.Now(), victoryType)
 }

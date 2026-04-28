@@ -75,6 +75,7 @@ func Run() error {
 		api.POST("/auth/register", userHandler.Register)
 		api.POST("/auth/login", userHandler.Login)
 		api.GET("/users/:id", userHandler.GetPublicProfile)
+		api.GET("/users/:id/stats", matchHandler.GetUserMatchStats)
 		api.GET("/u/:username", userHandler.GetPublicProfileByUsername)
 		api.GET("/leaderboard", userHandler.GetLeaderboard)
 		api.GET("/problems", problemHandler.ListProblems)

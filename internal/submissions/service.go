@@ -23,6 +23,7 @@ var (
 type MatchService interface {
 	GetByID(ctx context.Context, id string) (*matches.Match, error)
 	FinishMatch(ctx context.Context, id string, winnerID string) error
+	FinishMatchWithVictoryType(ctx context.Context, id string, winnerID, victoryType string) error
 }
 
 type ProblemService interface {
@@ -126,7 +127,7 @@ func (s *Service) Submit(ctx context.Context, matchID, userID, language, code st
 
 	// MVP: full-score submission wins immediately.
 	if totalCount > 0 && passedCount == totalCount {
-		if err := s.matchService.FinishMatch(ctx, match.ID, userID); err != nil {
+		if err := s.matchService.FinishMatchWithVictoryType(ctx, match.ID, userID, matches.VictoryTypeKO); err != nil {
 			return nil, err
 		}
 		updatedMatch, err := s.matchService.GetByID(ctx, match.ID)
@@ -153,12 +154,12 @@ func (s *Service) finishByBestScore(ctx context.Context, match *matches.Match) e
 	}
 
 	if player1Best == player2Best {
-		return s.matchService.FinishMatch(ctx, match.ID, "")
+		return s.matchService.FinishMatchWithVictoryType(ctx, match.ID, "", matches.VictoryTypeDraw)
 	}
 	if player1Best > player2Best {
-		return s.matchService.FinishMatch(ctx, match.ID, match.Player1ID)
+		return s.matchService.FinishMatchWithVictoryType(ctx, match.ID, match.Player1ID, matches.VictoryTypeDecision)
 	}
-	return s.matchService.FinishMatch(ctx, match.ID, match.Player2ID)
+	return s.matchService.FinishMatchWithVictoryType(ctx, match.ID, match.Player2ID, matches.VictoryTypeDecision)
 }
 
 func (s *Service) applyRatings(ctx context.Context, finishedMatch *matches.Match) {
@@ -173,8 +174,8 @@ func (s *Service) applyRatings(ctx context.Context, finishedMatch *matches.Match
 // ResolveMatchOutcome is returned by ResolveExpiredMatch.
 type ResolveMatchOutcome struct {
 	Match           *matches.Match `json:"match"`
-	Resolved        bool           `json:"resolved"`           // true if this call finished the match now
-	AlreadyFinished bool           `json:"already_finished"`   // true if match was already finished
+	Resolved        bool           `json:"resolved"`         // true if this call finished the match now
+	AlreadyFinished bool           `json:"already_finished"` // true if match was already finished
 }
 
 // ResolveExpiredMatch finishes a running match after its duration has passed, using best

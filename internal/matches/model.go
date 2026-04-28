@@ -15,31 +15,36 @@ const (
 	ResultDraw    = "draw"
 )
 
-// Per-viewer labels for finished matches (match history).
+const (
+	VictoryTypeKO       = "ko"
+	VictoryTypeDecision = "decision"
+	VictoryTypeDraw     = "draw"
+)
+
+
 const (
 	MyResultWin  = "win"
 	MyResultLoss = "loss"
 	MyResultDraw = "draw"
 )
 
-// UserMatchStats are aggregates over finished matches for one user.
+
 type UserMatchStats struct {
 	MatchesPlayed int `json:"matches_played"`
 	Wins          int `json:"wins"`
+	KnockoutWins  int `json:"knockout_wins"`
 	Losses        int `json:"losses"`
 	Draws         int `json:"draws"`
 }
 
-// MatchHistoryEntry is one finished match from the perspective of the requesting user.
 type MatchHistoryEntry struct {
 	Match         Match  `json:"match"`
 	OpponentID    string `json:"opponent_id"`
-	MyResult      string `json:"my_result"`                 // MyResultWin | MyResultLoss | MyResultDraw
-	MyRatingAfter *int   `json:"my_rating_after,omitempty"` // rating after this match, when snapshot exists
-	MyEloDelta    *int   `json:"my_elo_delta,omitempty"`    // change from this match, when snapshot exists
+	MyResult      string `json:"my_result"`                 
+	MyRatingAfter *int   `json:"my_rating_after,omitempty"` 
+	MyEloDelta    *int   `json:"my_elo_delta,omitempty"`   
 }
 
-// MatchHistoryPage is a paginated list of finished matches for a user.
 type MatchHistoryPage struct {
 	Matches []MatchHistoryEntry `json:"matches"`
 	Total   int64               `json:"total"`
@@ -55,6 +60,7 @@ type Match struct {
 	Status             string     `json:"status"`
 	DurationSeconds    int        `json:"duration_seconds"`
 	Result             string     `json:"result,omitempty"`
+	VictoryType        string     `json:"victory_type,omitempty"` 
 	StartedAt          *time.Time `json:"started_at,omitempty"`
 	EndedAt            *time.Time `json:"ended_at,omitempty"`
 	WinnerID           *string    `json:"winner_id,omitempty"`
@@ -81,11 +87,26 @@ func ResolveMatchResult(match *Match) string {
 	if *match.WinnerID == match.Player2ID {
 		return ResultPlayer2
 	}
-	// Defensive fallback for inconsistent historical rows.
+	
 	return ResultPending
 }
 
-// OpponentID returns the other player; empty if userID is not a participant.
+
+func ResolveVictoryType(match *Match) string {
+	if match == nil || match.Status != StatusFinished {
+		return ""
+	}
+	switch match.VictoryType {
+	case VictoryTypeKO, VictoryTypeDecision, VictoryTypeDraw:
+		return match.VictoryType
+	}
+	if match.WinnerID == nil {
+		return VictoryTypeDraw
+	}
+
+	return VictoryTypeDecision
+}
+
 func OpponentID(match *Match, userID string) string {
 	if match == nil || userID == "" {
 		return ""
@@ -99,7 +120,6 @@ func OpponentID(match *Match, userID string) string {
 	return ""
 }
 
-// MyResultForUser maps a finished match to win/loss/draw for the given user.
 func MyResultForUser(match *Match, userID string) string {
 	if match == nil || userID == "" || match.Status != StatusFinished {
 		return ""
@@ -113,7 +133,6 @@ func MyResultForUser(match *Match, userID string) string {
 	return MyResultLoss
 }
 
-// MyRatingAfterForUser returns the stored post-match rating for this user, if present.
 func MyRatingAfterForUser(m *Match, userID string) *int {
 	if m == nil || userID == "" {
 		return nil
@@ -127,7 +146,6 @@ func MyRatingAfterForUser(m *Match, userID string) *int {
 	return nil
 }
 
-// MyEloDeltaForUser returns the stored Elo change for this user for this match, if present.
 func MyEloDeltaForUser(m *Match, userID string) *int {
 	if m == nil || userID == "" {
 		return nil

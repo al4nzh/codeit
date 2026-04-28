@@ -14,7 +14,6 @@ type User struct {
 	RatingTitle string    `json:"rating_title,omitempty"`
 }
 
-// LeaderboardEntry is one row on the global rating leaderboard.
 type LeaderboardEntry struct {
 	WorldRank int    `json:"world_rank"`
 	UserID    string `json:"user_id"`

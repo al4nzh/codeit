@@ -106,6 +106,7 @@ Protected routes use **`Authorization: Bearer <jwt>`**.
 | `POST` | `/auth/register` | No | Create account |
 | `POST` | `/auth/login` | No | Returns JWT + user |
 | `GET` | `/users/:id` | No | Public profile (includes `avatar_url`, `world_rank`, `rating_title`) |
+| `GET` | `/users/:id/stats` | No | Public match stats for user id (same shape as `/me/stats`) |
 | `GET` | `/u/:username` | No | Public profile by username (share link; same shape as `/users/:id`) |
 | `GET` | `/leaderboard` | No | Global rating leaderboard (`limit`, `offset` query params) |
 | `GET` | `/me` | Yes | Same as public profile for the authenticated user |
@@ -235,6 +236,7 @@ Each row includes **`my_rating_after`** and **`my_elo_delta`** when that match h
         "problem_id": 1,
         "status": "finished",
         "duration_seconds": 1800,
+        "victory_type": "ko",
         "result": "player1",
         "started_at": "...",
         "ended_at": "...",
@@ -269,6 +271,7 @@ Aggregates over the same set as history: finished matches where the user partici
 {
   "matches_played": 42,
   "wins": 20,
+  "knockout_wins": 8,
   "losses": 18,
   "draws": 4
 }
@@ -341,6 +344,7 @@ Returned objects include fields such as:
 - `id`, `player1_id`, `player2_id`, `problem_id`
 - `status`: `waiting` | `running` | `finished`
 - `duration_seconds`, `started_at`, `ended_at`, `winner_id`, `created_at`
+- `victory_type` (when finished): `ko` | `decision` | `draw`
 - **`result`** (computed, not stored): `pending` | `player1` | `player2` | `draw`
   - `finished` + `winner_id == null` → **`draw`**
   - `finished` + winner equals player → **`player1`** or **`player2`**
