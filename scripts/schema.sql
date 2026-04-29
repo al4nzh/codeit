@@ -71,12 +71,32 @@ CREATE TABLE IF NOT EXISTS submissions (
     submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS match_analyses (
+    id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    submission_id TEXT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+    language TEXT NOT NULL,
+    passed_count INTEGER NOT NULL CHECK (passed_count >= 0),
+    total_count INTEGER NOT NULL CHECK (total_count >= 0),
+    summary TEXT NOT NULL,
+    strengths JSONB NOT NULL DEFAULT '[]'::jsonb,
+    issues JSONB NOT NULL DEFAULT '[]'::jsonb,
+    suggestions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    score DOUBLE PRECISION NULL,
+    analyzed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE match_analyses ALTER COLUMN submission_id DROP NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_problems_difficulty ON problems(difficulty);
 CREATE INDEX IF NOT EXISTS idx_test_cases_problem_id ON test_cases(problem_id);
 CREATE INDEX IF NOT EXISTS idx_matches_user_status_created ON matches(player1_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_user2_status_created ON matches(player2_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_submissions_match_user ON submissions(match_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_match_analyses_user_time ON match_analyses(user_id, analyzed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_match_analyses_match_user_time ON match_analyses(match_id, user_id, analyzed_at DESC);
 
 COMMIT;
 

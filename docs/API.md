@@ -78,6 +78,10 @@ Frontend should treat backend as source of truth for:
 | `JUDGE0_BASE_URL` | Yes | Judge0 API base URL (direct Judge0 or RapidAPI endpoint) |
 | `JUDGE0_API_KEY` | No | API key/token used for Judge0 auth |
 | `JUDGE0_RAPIDAPI_HOST` | No | If set, client sends RapidAPI headers (`X-RapidAPI-Host`, `X-RapidAPI-Key`) |
+| `ANALYZER_API_URL` | No | HTTP endpoint that analyzes the latest submission (LLM/Python service) |
+| `ANALYZER_API_KEY` | No | Bearer token sent to analyzer endpoint |
+| `OPENAI_API_KEY` | No | If set, backend calls OpenAI directly for submission analysis (takes precedence over `ANALYZER_API_URL`) |
+| `OPENAI_MODEL` | No | OpenAI model name for analyzer (default `gpt-4o-mini`) |
 | `PORT` | No | HTTP listen port (default `8080`) |
 
 ## Authentication
@@ -112,6 +116,7 @@ Protected routes use **`Authorization: Bearer <jwt>`**.
 | `GET` | `/me` | Yes | Same as public profile for the authenticated user |
 | `GET` | `/me/matches` | Yes | Paginated **finished** match history for the current user |
 | `GET` | `/me/stats` | Yes | Win / loss / draw counts from finished matches |
+| `GET` | `/me/analyses` | Yes | Paginated analysis history for the authenticated user |
 | `PATCH` | `/me/avatar` | Yes | Update your avatar URL |
 | `POST` | `/me/avatar/upload` | Yes | Upload avatar file and set `avatar_url` automatically |
 | `PATCH` | `/users/:id/rating` | Yes | **Manual** rating set (admin/debug; not tied to match flow) |
@@ -413,6 +418,8 @@ If `difficulty` is omitted, it defaults to **`easy`**.
 |--------|------|------|-------------|
 | `POST` | `/matches/:id/submissions` | Yes | Submit code for match `:id` (UUID) |
 | `POST` | `/matches/:id/resolve` | Yes | After match **deadline**, finish by best `passed_count` (no Judge0); same outcome as post-deadline submit |
+| `POST` | `/matches/:id/analyze-last` | Yes | Analyze the caller's latest submission in this match using configured analyzer service |
+| `GET` | `/matches/:id/analysis` | Yes | Get latest cached analysis for the caller in this match |
 
 #### Request body
 
@@ -505,6 +512,84 @@ When the match ends in the same request, `match_finished` is `true` and `match_r
 - **`403`** — not a participant.
 - **`404`** — match not found.
 - **`409`** — `match has not expired yet` (before deadline) or `match is not running`.
+
+#### `POST /api/v1/matches/:id/analyze-last`
+
+**Auth:** required. Caller must be a participant of the match.
+
+Analyzes the caller's **latest** submission in the match (if any) by sending problem context + code to the configured analyzer service.
+If an analysis already exists for the same latest submission, cached analysis is returned by default.
+If the caller has no submissions yet, analysis is still generated from the problem context with an empty code payload.
+
+**Body:** none.
+
+**Query:**
+
+- `refresh=true|1` — force re-analysis even when cached entry exists.
+
+**Response `200`:**
+
+```json
+{
+  "match_id": "match_uuid",
+  "user_id": "user_uuid",
+  "submission_id": "submission_uuid",
+  "language": "go",
+  "passed_count": 2,
+  "total_count": 5,
+  "summary": "Your solution handles basic cases but misses duplicates.",
+  "strengths": ["Readable code", "Correct loop structure"],
+  "issues": ["Does not handle duplicate values"],
+  "suggestions": ["Use a hash map keyed by value"],
+  "score": 6.2,
+  "analyzed_at": "2026-01-01T10:06:00Z",
+  "cached": false
+}
+```
+
+**Errors:**
+
+- `403` — user is not a participant.
+- `404` — match or problem not found.
+- `503` — analyzer service unavailable / not configured.
+
+#### `GET /api/v1/matches/:id/analysis`
+
+**Auth:** required. Caller must be a participant.
+
+Returns the latest **cached** analysis for this user+match pair.
+
+**Response `200`:** same shape as `POST /matches/:id/analyze-last` with `cached: true`.
+
+**Errors:**
+
+- `403` — user is not a participant.
+- `404` — match not found or no analysis exists yet.
+
+#### `GET /api/v1/me/analyses`
+
+**Auth:** required.
+
+**Query:** `limit` (default 20, max 100), `offset` (default 0)
+
+**Response `200`:**
+
+```json
+{
+  "items": [
+    {
+      "id": "analysis_uuid",
+      "match_id": "match_uuid",
+      "submission_id": "submission_uuid",
+      "summary": "Use a hash map for O(n).",
+      "cached": true
+    }
+  ],
+  "total": 7,
+  "limit": 20,
+  "offset": 0
+}
+```
 
 #### Ratings after match (`internal/ratings`)
 

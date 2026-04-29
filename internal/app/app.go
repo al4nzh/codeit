@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"codeit/internal/analysis"
 	"codeit/internal/auth"
 	"codeit/internal/matches"
 	"codeit/internal/matchmaking"
@@ -62,6 +63,15 @@ func Run() error {
 	ratingService := ratings.NewService(ratingRepo)
 	submissionService := submissions.NewService(submissionRepo, matchService, problemService, judgeClient, ratingService)
 	submissionHandler := submissions.NewHandler(submissionService, wsHub)
+	analysisClient := analysis.NewHTTPAnalyzerClient(
+		os.Getenv("ANALYZER_API_URL"),
+		os.Getenv("ANALYZER_API_KEY"),
+		os.Getenv("OPENAI_API_KEY"),
+		os.Getenv("OPENAI_MODEL"),
+	)
+	analysisRepo := analysis.NewRepository(db)
+	analysisService := analysis.NewService(matchService, problemService, submissionRepo, analysisRepo, analysisClient)
+	analysisHandler := analysis.NewHandler(analysisService)
 
 	router := gin.Default()
 	router.Use(corsMiddleware())
@@ -94,6 +104,9 @@ func Run() error {
 		protected.GET("/matches/active", matchHandler.GetActiveMatch)
 		protected.POST("/matches/:id/submissions", submissionHandler.Submit)
 		protected.POST("/matches/:id/resolve", submissionHandler.ResolveMatch)
+		protected.POST("/matches/:id/analyze-last", analysisHandler.AnalyzeLastSubmission)
+		protected.GET("/matches/:id/analysis", analysisHandler.GetMatchAnalysis)
+		protected.GET("/me/analyses", analysisHandler.ListMyAnalyses)
 		protected.POST("/matchmaking", matchmakingHandler.Matchmake)
 		protected.DELETE("/matchmaking", matchmakingHandler.LeaveMatchmaking)
 		protected.GET("/ws", wsHandler.HandleWebSocket)

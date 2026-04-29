@@ -25,7 +25,6 @@ type SampleTestCase struct {
 	Expected string `json:"expected"`
 }
 
-// ProblemResponse is safe to expose to clients because it only includes sample test cases.
 type ProblemResponse struct {
 	ID              int64            `json:"id"`
 	Title           string           `json:"title"`

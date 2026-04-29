@@ -2,7 +2,9 @@ package submissions
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
@@ -37,4 +39,25 @@ func (r *SubmissionRepository) GetBestPassedCountByMatchAndUser(ctx context.Cont
 		return 0, err
 	}
 	return best, nil
+}
+
+func (r *SubmissionRepository) GetLastSubmissionByMatchAndUser(ctx context.Context, matchID, userID string) (*Submission, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT id, match_id, user_id, language, code, passed_count, total_count, status, submitted_at
+		FROM submissions
+		WHERE match_id = $1 AND user_id = $2
+		ORDER BY submitted_at DESC
+		LIMIT 1
+	`, matchID, userID)
+
+	var s Submission
+	if err := row.Scan(
+		&s.ID, &s.MatchID, &s.UserID, &s.Language, &s.Code, &s.PassedCount, &s.TotalCount, &s.Status, &s.SubmittedAt,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &s, nil
 }
