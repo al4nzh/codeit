@@ -1,9 +1,12 @@
 package ws
 
 import (
+	"context"
 	"net/http"
+	"strings"
 
 	"codeit/internal/auth"
+	"codeit/internal/matches"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -15,12 +18,18 @@ type Event struct {
 
 type Handler struct {
 	hub      *Hub
+	matchSvc MatchService
 	upgrader websocket.Upgrader
 }
 
-func NewHandler(hub *Hub) *Handler {
+type MatchService interface {
+	GetByID(ctx context.Context, id string) (*matches.Match, error)
+}
+
+func NewHandler(hub *Hub, matchSvc MatchService) *Handler {
 	return &Handler{
-		hub: hub,
+		hub:      hub,
+		matchSvc: matchSvc,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -39,14 +48,14 @@ func (h *Handler) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	matchID := c.Query("match_id")
+	matchID := strings.TrimSpace(c.Query("match_id"))
 
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}
 
-	client := NewClient(h.hub, conn, userID, matchID)
+	client := NewClient(h.hub, conn, userID, matchID, h.matchSvc)
 	h.hub.Register(client)
 
 	go client.writePump()

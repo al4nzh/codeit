@@ -1,7 +1,11 @@
 package ws
 
 import (
+	"context"
+	"encoding/json"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
 )
@@ -19,16 +23,73 @@ type Client struct {
 	send    chan []byte
 	userID  string
 	matchID string
+	matchSvc MatchService
 }
 
-func NewClient(hub *Hub, conn *websocket.Conn, userID, matchID string) *Client {
+type incomingEvent struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+}
+
+type incomingChatPayload struct {
+	Text string `json:"text"`
+}
+
+func NewClient(hub *Hub, conn *websocket.Conn, userID, matchID string, matchSvc MatchService) *Client {
 	return &Client{
 		hub:     hub,
 		conn:    conn,
 		send:    make(chan []byte, 16),
 		userID:  userID,
 		matchID: matchID,
+		matchSvc: matchSvc,
 	}
+}
+
+func (c *Client) canChatInMatch(ctx context.Context) bool {
+	if c.matchSvc == nil || c.matchID == "" {
+		return false
+	}
+	match, err := c.matchSvc.GetByID(ctx, c.matchID)
+	if err != nil {
+		return false
+	}
+	return match.Player1ID == c.userID || match.Player2ID == c.userID
+}
+
+func (c *Client) handleIncoming(raw []byte) {
+	var event incomingEvent
+	if err := json.Unmarshal(raw, &event); err != nil {
+		return
+	}
+	if event.Type != "chat_message" {
+		return
+	}
+	if c.matchID == "" {
+		return
+	}
+	if !c.canChatInMatch(context.Background()) {
+		return
+	}
+
+	var payload incomingChatPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return
+	}
+
+	text := strings.TrimSpace(payload.Text)
+	if text == "" || utf8.RuneCountInString(text) > 200 {
+		return
+	}
+
+	_ = c.hub.BroadcastToMatch(c.matchID, Event{
+		Type: "chat_message",
+		Payload: map[string]any{
+			"user_id": c.userID,
+			"text":    text,
+			"sent_at": time.Now().UTC(),
+		},
+	})
 }
 
 func (c *Client) readPump() {
@@ -44,9 +105,11 @@ func (c *Client) readPump() {
 	})
 
 	for {
-		if _, _, err := c.conn.ReadMessage(); err != nil {
+		_, message, err := c.conn.ReadMessage()
+		if err != nil {
 			break
 		}
+		c.handleIncoming(message)
 	}
 }
 
