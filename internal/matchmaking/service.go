@@ -18,7 +18,7 @@ var (
 )
 
 type MatchService interface {
-	CreateMatch(ctx context.Context, player1ID, player2ID string, problemID int64, durationSeconds int) (*matches.Match, error)
+	CreateMatch(ctx context.Context, player1ID, player2ID string, problemID int64, durationSeconds int, skipElo bool) (*matches.Match, error)
 	GetActiveMatchByUserID(ctx context.Context, userID string) (*matches.Match, error)
 }
 
@@ -99,7 +99,7 @@ func (s *Service) EnqueueOrMatch(ctx context.Context, userID, difficulty string)
 		return nil, false, err
 	}
 
-	match, err := s.matchService.CreateMatch(ctx, opponentID, userID, problem.ID, defaultMatchDurationSeconds)
+	match, err := s.matchService.CreateMatch(ctx, opponentID, userID, problem.ID, defaultMatchDurationSeconds, false)
 	if err != nil {
 		s.mu.Lock()
 		s.waitingByDifficulty[difficulty] = append([]string{opponentID}, s.waitingByDifficulty[difficulty]...)

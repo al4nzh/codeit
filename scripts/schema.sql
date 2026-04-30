@@ -59,6 +59,25 @@ ALTER TABLE matches ADD COLUMN IF NOT EXISTS player2_rating_after INTEGER NULL;
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS player1_elo_delta INTEGER NULL;
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS player2_elo_delta INTEGER NULL;
 
+-- Friend / casual duels: when true, ratings.ApplyFinishedMatch is a no-op for this match.
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS skip_elo BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS match_invites (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    host_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'accepted')),
+    difficulty TEXT NOT NULL CHECK (difficulty IN ('easy', 'medium', 'hard')),
+    duration_seconds INTEGER NOT NULL CHECK (duration_seconds > 0),
+    skip_elo BOOLEAN NOT NULL DEFAULT TRUE,
+    match_id TEXT NULL REFERENCES matches(id) ON DELETE SET NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_invites_code ON match_invites(code);
+CREATE INDEX IF NOT EXISTS idx_match_invites_host_status ON match_invites(host_user_id, status);
+
 CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY,
     match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,

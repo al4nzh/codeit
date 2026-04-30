@@ -59,6 +59,7 @@ type Match struct {
 	ProblemID          int64      `json:"problem_id"`
 	Status             string     `json:"status"`
 	DurationSeconds    int        `json:"duration_seconds"`
+	SkipElo            bool       `json:"skip_elo,omitempty"`
 	Result             string     `json:"result,omitempty"`
 	VictoryType        string     `json:"victory_type,omitempty"` 
 	StartedAt          *time.Time `json:"started_at,omitempty"`

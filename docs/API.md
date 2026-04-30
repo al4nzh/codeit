@@ -7,13 +7,13 @@ Base URL: `http://localhost:8080` (or your host). All JSON APIs are under **`/ap
 Codeit backend is a **1v1 coding duel** API. The current user journey is:
 
 1. Register/login to get a JWT.
-2. Enter matchmaking for a difficulty (`easy|medium|hard`).
-3. Once paired, receive a `match_found` WebSocket event (and HTTP response) containing the match.
+2. Either enter **matchmaking** for a difficulty (`easy|medium|hard`), or create a **friend battle** invite and share the code/link so a friend can join.
+3. Once paired (ranked or friend), receive a `match_found` WebSocket event (and HTTP response) containing the match.
 4. Open a WebSocket connection with `match_id` for realtime match events.
 5. Submit code to Judge0 through backend (`POST /matches/:id/submissions`).
 6. When the timer elapses with no further submit, call **`POST /matches/:id/resolve`** so the server can finish by best score (same rules as a post-deadline submit).
 7. Receive `submission_received` updates and eventually `match_ended`.
-8. Ratings update automatically when match ends.
+8. Ratings update automatically when a **ranked** match ends. Friend battles default to **`skip_elo: true`** on the stored match; when `skip_elo` is true, user ratings are not updated after the match.
 
 Frontend should treat backend as source of truth for:
 
@@ -33,9 +33,10 @@ Frontend should treat backend as source of truth for:
 - Send `Authorization: Bearer <token>` for all protected HTTP routes.
 - Send same header when opening WebSocket.
 
-### 2) Matchmaking screen
+### 2) Matchmaking or friend battle
 
-- `POST /matchmaking` with selected difficulty.
+- Ranked: `POST /matchmaking` with selected difficulty.
+- Friend: `POST /friend-battles` then share `join_path` or `join_url`; guest opens `GET /friend-battles/:code` then `POST /friend-battles/:code/join`.
 - Handle:
   - `202 queued` -> show waiting UI
   - `200 matched` -> navigate to match screen
@@ -82,6 +83,7 @@ Frontend should treat backend as source of truth for:
 | `ANALYZER_API_KEY` | No | Bearer token sent to analyzer endpoint |
 | `OPENAI_API_KEY` | No | If set, backend calls OpenAI directly for submission analysis (takes precedence over `ANALYZER_API_URL`) |
 | `OPENAI_MODEL` | No | OpenAI model name for analyzer (default `gpt-4o-mini`) |
+| `PUBLIC_APP_URL` | No | If set (no trailing slash), `POST /friend-battles` includes a full `join_url` for the SPA (see Friend battles). |
 | `PORT` | No | HTTP listen port (default `8080`) |
 
 ## Authentication
@@ -353,11 +355,12 @@ Returned objects include fields such as:
 - **`result`** (computed, not stored): `pending` | `player1` | `player2` | `draw`
   - `finished` + `winner_id == null` → **`draw`**
   - `finished` + winner equals player → **`player1`** or **`player2`**
-- **Elo snapshot** (stored when ratings run for that match): `player1_rating_after`, `player2_rating_after`, `player1_elo_delta`, `player2_elo_delta` (omitted when unknown / pre-migration)
+- **`skip_elo`:** when `true`, the match is treated as casual/friendly: finishing does **not** apply Elo (field omitted when `false`).
+- **Elo snapshot** (stored when ratings run for that match): `player1_rating_after`, `player2_rating_after`, `player1_elo_delta`, `player2_elo_delta` (omitted when unknown / pre-migration / skipped)
 
 Match lifecycle rules (`internal/matches/service.go` + repository):
 
-- **Create (matchmaking path):** match is created already **`running`** with `started_at` set and `duration_seconds` set (default **30 minutes** from matchmaking).
+- **Create (matchmaking / friend-battle path):** match is created already **`running`** with `started_at` set and `duration_seconds` set (matchmaking default **20 minutes**; friend invites use request body or the same default when omitted).
 - **`StartMatch`:** only allowed if status is **`waiting`** (legacy / future use).
 - **`FinishMatch`:** only from **`running`** → **`finished`**; winner must be one of the two players **or** empty string for a **draw** (`winner_id` stored as SQL NULL).
 
@@ -409,6 +412,46 @@ If `difficulty` is omitted, it defaults to **`easy`**.
 #### `DELETE /api/v1/matchmaking`
 
 **Response:** `{ "left_queue": true | false }`
+
+---
+
+### Friend battles (`/api/v1`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/friend-battles` | Yes | Create a shareable invite (`code`, `join_path`, optional `join_url`) |
+| `GET` | `/friend-battles/:code` | No | Landing metadata: host preview, difficulty, expiry, `match_id` if already joined |
+| `POST` | `/friend-battles/:code/join` | Yes | Guest accepts: creates the same **`running`** match shape as matchmaking, broadcasts `match_found` to both users |
+
+#### `POST /api/v1/friend-battles`
+
+**Body (all optional except defaults):**
+
+```json
+{
+  "difficulty": "easy | medium | hard",
+  "duration_seconds": 1200,
+  "skip_elo": true
+}
+```
+
+- `difficulty` defaults to **`easy`**.
+- `duration_seconds` defaults to **1200** (20 minutes), clamped between **60** and **7200**.
+- `skip_elo` defaults to **`true`** (casual duel). Set `false` to apply normal Elo when the match finishes.
+
+**Errors:** **`409`** if the host already has an active match.
+
+**Response `201`:** includes `code`, `join_path` (e.g. `/friend-battle/ABC12XYZ` for the frontend router), `expires_at` (invite valid **24 hours**), `difficulty`, `duration_seconds`, `skip_elo`, `host_user_id`, `status`. If `PUBLIC_APP_URL` is set, also `join_url`.
+
+#### `GET /api/v1/friend-battles/:code`
+
+Public read for the invite landing page. **`410 Gone`** if the invite expired. **`404`** if the code is unknown.
+
+#### `POST /api/v1/friend-battles/:code/join`
+
+Authenticated **guest** (not the host) joins. Same **`200`** body as ranked matchmaking when matched: `{ "status": "matched", "match": { ... } }`, and both players get the **`match_found`** WebSocket event with the match payload.
+
+**Errors:** **`403`** own invite; **`409`** invite already used or either player in an active match; **`410`** expired.
 
 ---
 
@@ -688,7 +731,8 @@ The code assumes PostgreSQL tables including at least:
 
 - **`users`** — id, username, email, password, rating, created_at  
 - **`problems`**, **`test_cases`** — as used by `problems` repository  
-- **`matches`** — includes **`duration_seconds`**, status, timestamps, nullable **`winner_id`**, optional **`player1_rating_after`**, **`player2_rating_after`**, **`player1_elo_delta`**, **`player2_elo_delta`** (set when Elo is applied for that match)  
+- **`matches`** — includes **`duration_seconds`**, status, timestamps, nullable **`winner_id`**, **`skip_elo`** (friend/casual), optional **`player1_rating_after`**, **`player2_rating_after`**, **`player1_elo_delta`**, **`player2_elo_delta`** (set when Elo is applied for that match)  
+- **`match_invites`** — host, **`code`**, difficulty, duration, **`skip_elo`**, **`match_id`** when accepted, **`expires_at`**  
 - **`submissions`** — id, match_id, user_id, language, code, passed_count, total_count, status, submitted_at  
 
 There is **no migration runner** in this repo; schema must match these expectations.
@@ -703,6 +747,7 @@ There is **no migration runner** in this repo; schema must match these expectati
 | `internal/problems` | CRUD-style read/list; hidden tests for judge only |
 | `internal/matches` | Match persistence, lifecycle, computed `result`, finished-match history + stats |
 | `internal/matchmaking` | In-memory queue + pair + create running match + WS `match_found` |
+| `internal/friendbattles` | DB-backed invite codes; join creates match + WS `match_found` (same match flow as ranked) |
 | `internal/submissions` | Judge0 per test, persist submission, post-deadline resolve, finish match, trigger ratings |
 | `internal/ratings` | Post-match Elo updates (transactional) |
 | `internal/ws` | Hub, per-user and per-match broadcast |

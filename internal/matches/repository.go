@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-const matchSelectColumns = `id, player1_id, player2_id, problem_id, status, duration_seconds, started_at, ended_at, winner_id, created_at, COALESCE(victory_type, ''), player1_rating_after, player2_rating_after, player1_elo_delta, player2_elo_delta`
+const matchSelectColumns = `id, player1_id, player2_id, problem_id, status, duration_seconds, started_at, ended_at, winner_id, created_at, COALESCE(victory_type, ''), player1_rating_after, player2_rating_after, player1_elo_delta, player2_elo_delta, COALESCE(skip_elo, false)`
 
 func assignRatingSnapshot(m *Match, p1a, p2a, p1d, p2d sql.NullInt64) {
 	if p1a.Valid {
@@ -42,11 +42,11 @@ func (r *MatchRepository) CreateMatch(ctx context.Context, match *Match) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO matches (
 			id, player1_id, player2_id, problem_id, status, duration_seconds,
-			started_at, ended_at, winner_id, created_at, victory_type
+			started_at, ended_at, winner_id, created_at, victory_type, skip_elo
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`, match.ID, match.Player1ID, match.Player2ID, match.ProblemID, match.Status, match.DurationSeconds,
-		match.StartedAt, match.EndedAt, match.WinnerID, match.CreatedAt, match.VictoryType)
+		match.StartedAt, match.EndedAt, match.WinnerID, match.CreatedAt, match.VictoryType, match.SkipElo)
 	return err
 }
 
@@ -72,6 +72,7 @@ func (r *MatchRepository) GetByID(ctx context.Context, id string) (*Match, error
 		&match.CreatedAt,
 		&match.VictoryType,
 		&p1a, &p2a, &p1d, &p2d,
+		&match.SkipElo,
 	); err != nil {
 		return nil, err
 	}
@@ -104,6 +105,7 @@ func (r *MatchRepository) GetActiveMatchByUserID(ctx context.Context, userID str
 		&match.CreatedAt,
 		&match.VictoryType,
 		&p1a, &p2a, &p1d, &p2d,
+		&match.SkipElo,
 	); err != nil {
 		return nil, err
 	}
@@ -155,6 +157,7 @@ func (r *MatchRepository) ListFinishedMatchesForUser(ctx context.Context, userID
 			&m.CreatedAt,
 			&m.VictoryType,
 			&p1a, &p2a, &p1d, &p2d,
+			&m.SkipElo,
 		); err != nil {
 			return nil, err
 		}

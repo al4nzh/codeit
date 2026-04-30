@@ -33,7 +33,7 @@ func NewMatchService(repo *MatchRepository) *MatchService {
 	return &MatchService{repo: repo}
 }
 
-func (s *MatchService) CreateMatch(ctx context.Context, player1ID, player2ID string, problemID int64, durationSeconds int) (*Match, error) {
+func (s *MatchService) CreateMatch(ctx context.Context, player1ID, player2ID string, problemID int64, durationSeconds int, skipElo bool) (*Match, error) {
 	player1ID = strings.TrimSpace(player1ID)
 	player2ID = strings.TrimSpace(player2ID)
 	if player1ID == "" || player2ID == "" || problemID <= 0 || player1ID == player2ID || durationSeconds <= 0 {
@@ -48,6 +48,7 @@ func (s *MatchService) CreateMatch(ctx context.Context, player1ID, player2ID str
 		ProblemID:       problemID,
 		Status:          StatusRunning,
 		DurationSeconds: durationSeconds,
+		SkipElo:         skipElo,
 		StartedAt:       &startedAt,
 		CreatedAt:       time.Now(),
 	}

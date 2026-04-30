@@ -11,6 +11,7 @@ import (
 
 	"codeit/internal/analysis"
 	"codeit/internal/auth"
+	"codeit/internal/friendbattles"
 	"codeit/internal/matches"
 	"codeit/internal/matchmaking"
 	"codeit/internal/problems"
@@ -49,6 +50,9 @@ func Run() error {
 	matchmakingService := matchmaking.NewService(matchService, problemService)
 	wsHub := ws.NewHub()
 	matchmakingHandler := matchmaking.NewHandler(matchmakingService, wsHub)
+	friendInviteRepo := friendbattles.NewRepository(db)
+	friendBattleService := friendbattles.NewService(db, friendInviteRepo, matchService, problemService, userService)
+	friendBattleHandler := friendbattles.NewHandler(friendBattleService, wsHub)
 	wsHandler := ws.NewHandler(wsHub)
 	submissionRepo := submissions.NewSubmissionRepository(db)
 	judgeClient, err := submissions.NewJudge0Client(
@@ -92,6 +96,7 @@ func Run() error {
 		api.GET("/problems/random", problemHandler.GetRandomProblemByDifficulty)
 		api.GET("/problems/:id", problemHandler.GetProblemByID)
 		api.GET("/matches/:id", matchHandler.GetByID)
+		api.GET("/friend-battles/:code", friendBattleHandler.GetInvite)
 
 		protected := api.Group("/")
 		protected.Use(auth.AuthMiddleware())
@@ -109,6 +114,8 @@ func Run() error {
 		protected.GET("/me/analyses", analysisHandler.ListMyAnalyses)
 		protected.POST("/matchmaking", matchmakingHandler.Matchmake)
 		protected.DELETE("/matchmaking", matchmakingHandler.LeaveMatchmaking)
+		protected.POST("/friend-battles", friendBattleHandler.CreateInvite)
+		protected.POST("/friend-battles/:code/join", friendBattleHandler.JoinInvite)
 		protected.GET("/ws", wsHandler.HandleWebSocket)
 	}
 

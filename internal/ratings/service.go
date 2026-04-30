@@ -30,6 +30,9 @@ func (s *Service) ApplyFinishedMatch(ctx context.Context, match *matches.Match) 
 	if match.Status != matches.StatusFinished {
 		return ErrMatchNotFinished
 	}
+	if match.SkipElo {
+		return nil
+	}
 	if match.Player1ID == "" || match.Player2ID == "" || match.Player1ID == match.Player2ID {
 		return ErrInvalidMatch
 	}
