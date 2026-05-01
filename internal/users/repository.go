@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
@@ -49,6 +50,55 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*User, e
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (r *UserRepository) ExistsByUsername(ctx context.Context, username string) (bool, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT 1
+		FROM users
+		WHERE LOWER(username) = LOWER($1)
+		LIMIT 1
+	`, username)
+	var one int
+	if err := row.Scan(&one); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *UserRepository) ExistsByUsernameExcludingUser(ctx context.Context, username, excludeUserID string) (bool, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT 1
+		FROM users
+		WHERE LOWER(username) = LOWER($1) AND id <> $2
+		LIMIT 1
+	`, username, excludeUserID)
+	var one int
+	if err := row.Scan(&one); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *UserRepository) UpdateUsername(ctx context.Context, userID, username string) error {
+	cmdTag, err := r.db.Exec(ctx, `
+		UPDATE users
+		SET username = $1
+		WHERE id = $2
+	`, username, userID)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 func (r *UserRepository) UpdateRating(ctx context.Context, id string, rating int) error {

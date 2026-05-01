@@ -76,6 +76,7 @@ Frontend should treat backend as source of truth for:
 |----------|----------|---------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string for `pgxpool` |
 | `JWT_SECRET` | Yes | HMAC secret for signing JWTs (app panics if unset) |
+| `GOOGLE_CLIENT_ID` | No | Google OAuth web client ID used to verify Google ID tokens for `POST /auth/google` |
 | `JUDGE0_BASE_URL` | Yes | Judge0 API base URL (direct Judge0 or RapidAPI endpoint) |
 | `JUDGE0_API_KEY` | No | API key/token used for Judge0 auth |
 | `JUDGE0_RAPIDAPI_HOST` | No | If set, client sends RapidAPI headers (`X-RapidAPI-Host`, `X-RapidAPI-Key`) |
@@ -111,6 +112,7 @@ Protected routes use **`Authorization: Bearer <jwt>`**.
 |--------|------|------|-------------|
 | `POST` | `/auth/register` | No | Create account |
 | `POST` | `/auth/login` | No | Returns JWT + user |
+| `POST` | `/auth/google` | No | Sign in/up with Google ID token; returns JWT + user |
 | `GET` | `/users/:id` | No | Public profile (includes `avatar_url`, `world_rank`, `rating_title`) |
 | `GET` | `/users/:id/stats` | No | Public match stats for user id (same shape as `/me/stats`) |
 | `GET` | `/u/:username` | No | Public profile by username (share link; same shape as `/users/:id`) |

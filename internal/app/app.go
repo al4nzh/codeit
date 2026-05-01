@@ -39,7 +39,8 @@ func Run() error {
 	defer db.Close()
 
 	userRepo := users.NewUserRepository(db)
-	userService := users.NewUserService(userRepo)
+	googleVerifier := auth.NewGoogleTokenVerifier(os.Getenv("GOOGLE_CLIENT_ID"))
+	userService := users.NewUserService(userRepo, googleVerifier)
 	userHandler := users.NewUserHandler(userService)
 	problemRepo := problems.NewProblemRepository(db)
 	problemService := problems.NewProblemService(problemRepo)
@@ -88,6 +89,7 @@ func Run() error {
 	{
 		api.POST("/auth/register", userHandler.Register)
 		api.POST("/auth/login", userHandler.Login)
+		api.POST("/auth/google", userHandler.LoginGoogle)
 		api.GET("/users/:id", userHandler.GetPublicProfile)
 		api.GET("/users/:id/stats", matchHandler.GetUserMatchStats)
 		api.GET("/u/:username", userHandler.GetPublicProfileByUsername)
@@ -105,6 +107,7 @@ func Run() error {
 		protected.GET("/me/stats", matchHandler.GetMyMatchStats)
 		protected.PATCH("/me/avatar", userHandler.UpdateMyAvatar)
 		protected.POST("/me/avatar/upload", userHandler.UploadMyAvatar)
+		protected.PATCH("/me/username", userHandler.PatchMyUsername)
 		protected.PATCH("/users/:id/rating", userHandler.UpdateRating)
 		protected.GET("/matches/active", matchHandler.GetActiveMatch)
 		protected.POST("/matches/:id/submissions", submissionHandler.Submit)

@@ -64,6 +64,32 @@ func (h *UserHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+func (h *UserHandler) LoginGoogle(c *gin.Context) {
+	var req struct {
+		IDToken string `json:"id_token"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	user, err := h.service.LoginWithGoogle(c.Request.Context(), req.IDToken)
+	if err != nil {
+		switch err {
+		case ErrInvalidInput:
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case ErrInvalidGoogleToken:
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		case ErrGoogleUnavailable:
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to login with google"})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, user)
+}
+
 func (h *UserHandler) GetProfile(c *gin.Context) {
 	userID, ok := auth.UserIDFromContext(c)
 	if !ok {
@@ -228,6 +254,38 @@ func (h *UserHandler) UploadMyAvatar(c *gin.Context) {
 	user, err := h.service.GetPublicProfile(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "avatar uploaded but failed to load profile"})
+		return
+	}
+	c.JSON(http.StatusOK, user)
+}
+
+func (h *UserHandler) PatchMyUsername(c *gin.Context) {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req struct {
+		Username string `json:"username"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	user, err := h.service.UpdateMyUsername(c.Request.Context(), userID, req.Username)
+	if err != nil {
+		switch err {
+		case ErrInvalidInput:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid username (3-32 chars, letters, digits, _ or -)"})
+		case ErrUsernameTaken:
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		case ErrUserNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update username"})
+		}
 		return
 	}
 	c.JSON(http.StatusOK, user)
