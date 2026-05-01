@@ -34,9 +34,9 @@ type Service struct {
 	waitingByDifficulty map[string][]string
 }
 
-const (
-	defaultMatchDurationSeconds = 20 * 60
-)
+//const (
+	//defaultMatchDurationSeconds = 20 * 60
+//)
 
 var allowedDifficulties = map[string]struct{}{
 	"easy":   {},
@@ -98,8 +98,13 @@ func (s *Service) EnqueueOrMatch(ctx context.Context, userID, difficulty string)
 		s.mu.Unlock()
 		return nil, false, err
 	}
-
-	match, err := s.matchService.CreateMatch(ctx, opponentID, userID, problem.ID, defaultMatchDurationSeconds, false)
+	durationSeconds := 20 * 60 // default
+	if difficulty == "easy" {
+		durationSeconds = 10 * 60
+	} else if difficulty == "hard" {
+	durationSeconds = 30 * 60
+	} 
+	match, err := s.matchService.CreateMatch(ctx, opponentID, userID, problem.ID, durationSeconds, false)
 	if err != nil {
 		s.mu.Lock()
 		s.waitingByDifficulty[difficulty] = append([]string{opponentID}, s.waitingByDifficulty[difficulty]...)

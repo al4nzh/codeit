@@ -8,6 +8,7 @@ type AnalyzeLastSubmissionResult struct {
 	UserID       string    `json:"user_id"`
 	SubmissionID string    `json:"submission_id"`
 	Language     string    `json:"language"`
+	Code         string    `json:"code,omitempty"`
 	PassedCount  int       `json:"passed_count"`
 	TotalCount   int       `json:"total_count"`
 	Summary      string    `json:"summary"`

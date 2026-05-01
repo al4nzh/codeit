@@ -19,17 +19,24 @@ type Event struct {
 type Handler struct {
 	hub      *Hub
 	matchSvc MatchService
+	ratings  RatingService
 	upgrader websocket.Upgrader
 }
 
 type MatchService interface {
 	GetByID(ctx context.Context, id string) (*matches.Match, error)
+	FinishMatchWithVictoryType(ctx context.Context, id string, winnerID, victoryType string) error
 }
 
-func NewHandler(hub *Hub, matchSvc MatchService) *Handler {
+type RatingService interface {
+	ApplyFinishedMatch(ctx context.Context, match *matches.Match) error
+}
+
+func NewHandler(hub *Hub, matchSvc MatchService, ratings RatingService) *Handler {
 	return &Handler{
 		hub:      hub,
 		matchSvc: matchSvc,
+		ratings:  ratings,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -55,7 +62,7 @@ func (h *Handler) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	client := NewClient(h.hub, conn, userID, matchID, h.matchSvc)
+	client := NewClient(h.hub, conn, userID, matchID, h.matchSvc, h.ratings)
 	h.hub.Register(client)
 
 	go client.writePump()

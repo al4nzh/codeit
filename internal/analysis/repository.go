@@ -21,11 +21,12 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 func (r *Repository) GetLatestByMatchAndUser(ctx context.Context, matchID, userID string) (*AnalyzeLastSubmissionResult, error) {
 	row := r.db.QueryRow(ctx, `
-		SELECT id, match_id, user_id, COALESCE(submission_id, ''), language, passed_count, total_count,
+		SELECT ma.id, ma.match_id, ma.user_id, COALESCE(ma.submission_id, ''), ma.language, COALESCE(s.code, ''), ma.passed_count, ma.total_count,
 		       summary, strengths, issues, suggestions, score, analyzed_at
-		FROM match_analyses
-		WHERE match_id = $1 AND user_id = $2
-		ORDER BY analyzed_at DESC
+		FROM match_analyses ma
+		LEFT JOIN submissions s ON s.id = ma.submission_id
+		WHERE ma.match_id = $1 AND ma.user_id = $2
+		ORDER BY ma.analyzed_at DESC
 		LIMIT 1
 	`, matchID, userID)
 	out, err := scanAnalysisRow(row)
@@ -73,11 +74,12 @@ func (r *Repository) ListByUser(ctx context.Context, userID string, limit, offse
 	}
 
 	rows, err := r.db.Query(ctx, `
-		SELECT id, match_id, user_id, COALESCE(submission_id, ''), language, passed_count, total_count,
+		SELECT ma.id, ma.match_id, ma.user_id, COALESCE(ma.submission_id, ''), ma.language, COALESCE(s.code, ''), ma.passed_count, ma.total_count,
 		       summary, strengths, issues, suggestions, score, analyzed_at
-		FROM match_analyses
-		WHERE user_id = $1
-		ORDER BY analyzed_at DESC
+		FROM match_analyses ma
+		LEFT JOIN submissions s ON s.id = ma.submission_id
+		WHERE ma.user_id = $1
+		ORDER BY ma.analyzed_at DESC
 		LIMIT $2 OFFSET $3
 	`, userID, limit, offset)
 	if err != nil {
@@ -108,7 +110,7 @@ func scanAnalysisRow(row rowScanner) (*AnalyzeLastSubmissionResult, error) {
 	var strengths, issues, suggestions []byte
 	out := &AnalyzeLastSubmissionResult{}
 	if err := row.Scan(
-		&out.ID, &out.MatchID, &out.UserID, &out.SubmissionID, &out.Language, &out.PassedCount, &out.TotalCount,
+		&out.ID, &out.MatchID, &out.UserID, &out.SubmissionID, &out.Language, &out.Code, &out.PassedCount, &out.TotalCount,
 		&out.Summary, &strengths, &issues, &suggestions, &out.Score, &out.AnalyzedAt,
 	); err != nil {
 		return nil, err

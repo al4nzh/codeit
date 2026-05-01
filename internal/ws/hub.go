@@ -6,10 +6,11 @@ import (
 )
 
 type Hub struct {
-	mu         sync.RWMutex
-	clients    map[*Client]struct{}
+	mu          sync.RWMutex
+	clients     map[*Client]struct{}
 	userClients map[string]map[*Client]struct{}
-	matchRooms map[string]map[*Client]struct{}
+	matchRooms  map[string]map[*Client]struct{}
+	tabSwitches map[string]map[string]int
 }
 
 func NewHub() *Hub {
@@ -17,7 +18,25 @@ func NewHub() *Hub {
 		clients:     make(map[*Client]struct{}),
 		userClients: make(map[string]map[*Client]struct{}),
 		matchRooms:  make(map[string]map[*Client]struct{}),
+		tabSwitches: make(map[string]map[string]int),
 	}
+}
+
+func (h *Hub) IncrementTabSwitch(matchID, userID string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if _, ok := h.tabSwitches[matchID]; !ok {
+		h.tabSwitches[matchID] = make(map[string]int)
+	}
+	h.tabSwitches[matchID][userID]++
+	return h.tabSwitches[matchID][userID]
+}
+
+func (h *Hub) ClearTabSwitches(matchID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.tabSwitches, matchID)
 }
 
 func (h *Hub) Register(client *Client) {

@@ -110,6 +110,7 @@ func (s *Service) AnalyzeLastSubmission(ctx context.Context, matchID, userID str
 	out.UserID = userID
 	out.SubmissionID = submissionID
 	out.Language = language
+	out.Code = code
 	out.PassedCount = passedCount
 	out.TotalCount = totalCount
 	out.AnalyzedAt = time.Now()

@@ -53,7 +53,6 @@ func Run() error {
 	friendInviteRepo := friendbattles.NewRepository(db)
 	friendBattleService := friendbattles.NewService(db, friendInviteRepo, matchService, problemService, userService)
 	friendBattleHandler := friendbattles.NewHandler(friendBattleService, wsHub)
-	wsHandler := ws.NewHandler(wsHub, matchService)
 	submissionRepo := submissions.NewSubmissionRepository(db)
 	judgeClient, err := submissions.NewJudge0Client(
 		os.Getenv("JUDGE0_BASE_URL"),
@@ -65,6 +64,7 @@ func Run() error {
 	}
 	ratingRepo := ratings.NewRepository(db)
 	ratingService := ratings.NewService(ratingRepo)
+	wsHandler := ws.NewHandler(wsHub, matchService, ratingService)
 	submissionService := submissions.NewService(submissionRepo, matchService, problemService, judgeClient, ratingService)
 	submissionHandler := submissions.NewHandler(submissionService, wsHub)
 	analysisClient := analysis.NewHTTPAnalyzerClient(

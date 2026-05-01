@@ -3,10 +3,12 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"codeit/internal/matches"
 	"github.com/gorilla/websocket"
 )
 
@@ -18,12 +20,13 @@ const (
 )
 
 type Client struct {
-	hub     *Hub
-	conn    *websocket.Conn
-	send    chan []byte
-	userID  string
-	matchID string
+	hub      *Hub
+	conn     *websocket.Conn
+	send     chan []byte
+	userID   string
+	matchID  string
 	matchSvc MatchService
+	ratings  RatingService
 }
 
 type incomingEvent struct {
@@ -35,14 +38,17 @@ type incomingChatPayload struct {
 	Text string `json:"text"`
 }
 
-func NewClient(hub *Hub, conn *websocket.Conn, userID, matchID string, matchSvc MatchService) *Client {
+const tabSwitchAutoLossThreshold = 2
+
+func NewClient(hub *Hub, conn *websocket.Conn, userID, matchID string, matchSvc MatchService, ratings RatingService) *Client {
 	return &Client{
-		hub:     hub,
-		conn:    conn,
-		send:    make(chan []byte, 16),
-		userID:  userID,
-		matchID: matchID,
+		hub:      hub,
+		conn:     conn,
+		send:     make(chan []byte, 16),
+		userID:   userID,
+		matchID:  matchID,
 		matchSvc: matchSvc,
+		ratings:  ratings,
 	}
 }
 
@@ -62,9 +68,17 @@ func (c *Client) handleIncoming(raw []byte) {
 	if err := json.Unmarshal(raw, &event); err != nil {
 		return
 	}
-	if event.Type != "chat_message" {
+	switch event.Type {
+	case "chat_message":
+		c.handleIncomingChat(event.Payload)
+	case "tab_switched":
+		c.handleTabSwitched()
+	default:
 		return
 	}
+}
+
+func (c *Client) handleIncomingChat(rawPayload json.RawMessage) {
 	if c.matchID == "" {
 		return
 	}
@@ -73,7 +87,7 @@ func (c *Client) handleIncoming(raw []byte) {
 	}
 
 	var payload incomingChatPayload
-	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+	if err := json.Unmarshal(rawPayload, &payload); err != nil {
 		return
 	}
 
@@ -89,6 +103,53 @@ func (c *Client) handleIncoming(raw []byte) {
 			"text":    text,
 			"sent_at": time.Now().UTC(),
 		},
+	})
+}
+
+func (c *Client) handleTabSwitched() {
+	if c.matchID == "" {
+		return
+	}
+	if !c.canChatInMatch(context.Background()) {
+		return
+	}
+
+	switches := c.hub.IncrementTabSwitch(c.matchID, c.userID)
+	if switches < tabSwitchAutoLossThreshold {
+		return
+	}
+
+	match, err := c.matchSvc.GetByID(context.Background(), c.matchID)
+	if err != nil {
+		return
+	}
+	if match.Status != matches.StatusRunning {
+		c.hub.ClearTabSwitches(c.matchID)
+		return
+	}
+
+	winnerID := match.Player1ID
+	if c.userID == match.Player1ID {
+		winnerID = match.Player2ID
+	}
+	if err := c.matchSvc.FinishMatchWithVictoryType(context.Background(), c.matchID, winnerID, matches.VictoryTypeKO); err != nil {
+		if errors.Is(err, matches.ErrInvalidState) {
+			c.hub.ClearTabSwitches(c.matchID)
+		}
+		return
+	}
+
+	updated, err := c.matchSvc.GetByID(context.Background(), c.matchID)
+	if err != nil {
+		return
+	}
+	if c.ratings != nil {
+		_ = c.ratings.ApplyFinishedMatch(context.Background(), updated)
+	}
+	c.hub.ClearTabSwitches(c.matchID)
+	_ = c.hub.BroadcastToMatch(c.matchID, Event{
+		Type:    "match_ended",
+		Payload: updated,
 	})
 }
 
